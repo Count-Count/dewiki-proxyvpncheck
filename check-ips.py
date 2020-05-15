@@ -22,9 +22,13 @@ import pywikibot
 
 
 @dataclass
-class AlreadyReportedCandidates:
-    reviewCandidates: Set[str]
-    autoReviewCandidates: Set[str]
+class CheckResult:
+    score: int
+    cached: bool
+
+
+class CheckException(Exception):
+    pass
 
 
 class Program:
@@ -32,6 +36,7 @@ class Program:
         self.site = pywikibot.Site()
         self.site.login()
         self.timezone = pytz.timezone("Europe/Berlin")
+        self.apikey = os.getenv("IPCHECK_API_KEY")
 
     def getAllIps(self, recentChanges) -> Set[str]:
         ips: Set[str] = set()
@@ -41,6 +46,48 @@ class Program:
             if (ch["type"] == "edit" or ch["type"] == "new") and "anon" in ch:
                 ips.add(ch["user"])
         return ips
+
+    def checkWithIpCheck(self, ip: str) -> CheckResult:
+        lastError = None
+        for _ in range(5):
+            try:
+                response = requests.get(f"https://ipcheck.toolforge.org/index.php?ip={ip}&api=true&key={self.apikey}")
+                if response.status_code == 200:
+                    blockScore = 0
+                    errors = 0
+                    jsonResponse = json.loads(response.text)
+                    if not "error" in jsonResponse["teohio"]:
+                        if jsonResponse["teohio"]["result"]["vpnOrProxy"]:
+                            blockScore += 1
+                    else:
+                        errors += 1
+                    if not "error" in jsonResponse["proxycheck"]:
+                        if jsonResponse["proxycheck"]["result"]["proxy"]:
+                            blockScore += 1
+                    else:
+                        errors += 1
+                    if not "error" in jsonResponse["getIPIntel"]:
+                        if jsonResponse["getIPIntel"]["result"]["chance"] == 100:
+                            blockScore += 1
+                    if not "error" in jsonResponse["ipQualityScore"]:
+                        if (
+                            jsonResponse["ipQualityScore"]["result"]["proxy"]
+                            or jsonResponse["ipQualityScore"]["result"]["vpn"]
+                        ):
+                            blockScore += 1
+                    else:
+                        errors += 1
+
+                    cached = jsonResponse["cache"]["result"]["cached"] == "yes"
+                    return CheckResult(cached=cached, score=blockScore)
+                else:
+                    response.raise_for_status()
+            except Exception as ex:
+                lastError = str(ex)
+            # delay in case of error
+            time.sleep(1)
+        else:
+            raise CheckException(lastError)
 
     def listIPs(self) -> None:
         print(f"Retrieving recent changes...")
@@ -115,56 +162,18 @@ class Program:
         print(f"Reported but not blocked ips: {len(ips) - len(shortlyBlockedIps)}")
         print(f"Checking {len(ips)} addresses...")
 
-        apikey = os.getenv("IPCHECK_API_KEY")
         uncached = 0
         # ips = ["103.224.240.72"]
         for ip in ips:
-            lastError = None
-            for _ in range(5):
-                try:
-                    response = requests.get(f"https://ipcheck.toolforge.org/index.php?ip={ip}&api=true&key={apikey}")
-                    if response.status_code == 200:
-                        blockScore = 0
-                        errors = 0
-                        jsonResponse = json.loads(response.text)
-                        if not "error" in jsonResponse["teohio"]:
-                            if jsonResponse["teohio"]["result"]["vpnOrProxy"]:
-                                blockScore += 1
-                        else:
-                            errors += 1
-                        if not "error" in jsonResponse["proxycheck"]:
-                            if jsonResponse["proxycheck"]["result"]["proxy"]:
-                                blockScore += 1
-                        else:
-                            errors += 1
-                        if not "error" in jsonResponse["getIPIntel"]:
-                            if jsonResponse["getIPIntel"]["result"]["chance"] == 100:
-                                blockScore += 1
-                        if not "error" in jsonResponse["ipQualityScore"]:
-                            if (
-                                jsonResponse["ipQualityScore"]["result"]["proxy"]
-                                or jsonResponse["ipQualityScore"]["result"]["vpn"]
-                            ):
-                                blockScore += 1
-                        else:
-                            errors += 1
-
-                        if jsonResponse["cache"]["result"]["cached"] != "yes":
-                            uncached += 1
-                            # print(
-                            #     f"{ip} - score: {blockScore} errors: {errors} cached: {jsonResponse['cache']['result']['cached']}"
-                            # )
-                        if blockScore >= 2:
-                            print(f"Likely VPN or proxy: {ip}, score: {blockScore}")
-                        break
-                    else:
-                        response.raise_for_status()
-                except Exception as ex:
-                    lastError = str(ex)
-                # delay in case of error
-                time.sleep(1)
+            try:
+                checkRes = self.checkWithIpCheck(ip)
+            except CheckException as ex:
+                print(f"{ip} could not be checked: {ex}")
             else:
-                print(f"{ip} could not be checked: {lastError}")
+                if checkRes.score >= 2:
+                    print(f"Likely VPN or proxy: {ip}, score: {checkRes.score}")
+                if not checkRes.cached:
+                    uncached += 1
 
         print(f"Uncached: {uncached}")
 
