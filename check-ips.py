@@ -6,30 +6,15 @@
 
 from __future__ import unicode_literals
 
-import json
 import locale
-import os
 import re
-import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Set
 
-import lmdb
 import pytz
-import requests
 
 import pywikibot
-
-
-@dataclass
-class CheckResult:
-    score: int
-    cached: bool
-
-
-class CheckException(Exception):
-    pass
+from vpncheck import CheckException, VpnCheck
 
 
 class Program:
@@ -37,10 +22,7 @@ class Program:
         self.site = pywikibot.Site()
         self.site.login()
         self.timezone = pytz.timezone("Europe/Berlin")
-        self.apikey = os.getenv("IPCHECK_API_KEY")
-        self.teohCacheEnv = lmdb.open(
-            "teohCache", map_size=int(1e8), metasync=False, sync=False, lock=False, writemap=False, meminit=False
-        )
+        self.vpnCheck = VpnCheck()
 
     def getAllIps(self, recentChanges: Any) -> Set[str]:
         ips: Set[str] = set()
@@ -50,77 +32,6 @@ class Program:
             if (ch["type"] == "edit" or ch["type"] == "new") and "anon" in ch:
                 ips.add(ch["user"])
         return ips
-
-    def checkWithTeoh(self, ip: str) -> CheckResult:
-        if ip.startswith("2001:16B8:"):
-            return CheckResult(score=0, cached=True)
-        jsonResponse = None
-        cached = False
-        with self.teohCacheEnv.begin(buffers=True) as txn:
-            getRes = txn.get(ip.encode("utf-8"), None)
-            if getRes:
-                cached = True
-                jsonResponse = json.loads(str(getRes, "utf-8"))
-        lastError = None
-        if not jsonResponse:
-            for _ in range(5):
-                try:
-                    response = requests.get(f"https://ip.teoh.io/api/vpn/{ip}")
-                    if response.status_code == 200:
-                        jsonResponse = json.loads(response.text)
-                        with self.teohCacheEnv.begin(buffers=True, write=True) as txn:
-                            txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
-                        break
-                except Exception as ex:
-                    lastError = str(ex)
-                # delay in case of error
-                time.sleep(1)
-            else:
-                raise CheckException(lastError)
-        score = 2 if jsonResponse["vpn_or_proxy"] != "no" else 0
-        return CheckResult(score=score, cached=cached)
-
-    def checkWithIpCheck(self, ip: str) -> CheckResult:
-        lastError = None
-        for _ in range(5):
-            try:
-                response = requests.get(f"https://ipcheck.toolforge.org/index.php?ip={ip}&api=true&key={self.apikey}")
-                if response.status_code == 200:
-                    blockScore = 0
-                    errors = 0
-                    jsonResponse = json.loads(response.text)
-                    if not "error" in jsonResponse["teohio"]:
-                        if jsonResponse["teohio"]["result"]["vpnOrProxy"]:
-                            blockScore += 1
-                    else:
-                        errors += 1
-                    if not "error" in jsonResponse["proxycheck"]:
-                        if jsonResponse["proxycheck"]["result"]["proxy"]:
-                            blockScore += 1
-                    else:
-                        errors += 1
-                    if not "error" in jsonResponse["getIPIntel"]:
-                        if jsonResponse["getIPIntel"]["result"]["chance"] == 100:
-                            blockScore += 1
-                    if not "error" in jsonResponse["ipQualityScore"]:
-                        if (
-                            jsonResponse["ipQualityScore"]["result"]["proxy"]
-                            or jsonResponse["ipQualityScore"]["result"]["vpn"]
-                        ):
-                            blockScore += 1
-                    else:
-                        errors += 1
-
-                    cached = jsonResponse["cache"]["result"]["cached"] == "yes"
-                    return CheckResult(cached=cached, score=blockScore)
-                else:
-                    response.raise_for_status()
-            except Exception as ex:
-                lastError = str(ex)
-            # delay in case of error
-            time.sleep(1)
-
-        raise CheckException(lastError)
 
     def listIPs(self) -> None:
         print("Retrieving recent changes...")
@@ -187,11 +98,11 @@ class Program:
         print(f"Checking {len(ipToRevertCount.keys())} addresses with teoh...")
         for ip in ipToRevertCount:
             try:
-                checkRes = self.checkWithTeoh(ip)
+                checkRes = self.vpnCheck.checkWithTeoh(ip)
                 if not checkRes.cached:
                     uncached += 1
                 if checkRes.score >= 2:
-                    checkRes = self.checkWithIpCheck(ip)
+                    checkRes = self.vpnCheck.checkWithIpCheck(ip)
             except CheckException as ex:
                 print(f"{ip} could not be checked: {ex}")
             else:
@@ -209,7 +120,7 @@ class Program:
         # ips = ["103.224.240.72"]
         for ip in ips:
             try:
-                checkRes = self.checkWithIpCheck(ip)
+                checkRes = self.vpnCheck.checkWithIpCheck(ip)
             except CheckException as ex:
                 print(f"{ip} could not be checked: {ex}")
             else:
