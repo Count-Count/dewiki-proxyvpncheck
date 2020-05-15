@@ -86,8 +86,8 @@ class Program:
                 lastError = str(ex)
             # delay in case of error
             time.sleep(1)
-        else:
-            raise CheckException(lastError)
+
+        raise CheckException(lastError)
 
     def listIPs(self) -> None:
         print(f"Retrieving recent changes...")
