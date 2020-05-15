@@ -23,12 +23,13 @@
             ]
         },
         {
-            "name": "list users prod!",
+            "name": "sentinel",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/check-ips.py",
+            "program": "${workspaceFolder}/sentinel.py",
             "console": "integratedTerminal",
             "args": [
+                "-simulate",
                 "--run-bot",
             ]
         },
