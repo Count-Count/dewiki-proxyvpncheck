@@ -4,7 +4,7 @@
 #
 # Distributed under the terms of the MIT license.
 
-from typing import Any, Tuple, List, Optional, cast, Iterator, Callable, Pattern, Dict
+from typing import Any, Iterator, Callable, Pattern, Dict
 from datetime import datetime
 from datetime import timedelta
 import os
@@ -18,7 +18,8 @@ from pywikibot.bot import SingleSiteBot
 from pywikibot.diff import PatchManager
 from pywikibot.comms.eventstreams import site_rc_listener
 from vpncheck import CheckException, VpnCheck
-
+from socket import gaierror, gethostbyname
+import errno
 
 TIMEOUT = 600  # We expect at least one rc entry every 10 minutes
 
@@ -39,7 +40,10 @@ class Controller(SingleSiteBot):
         self.generator = FaultTolerantLiveRCPageGenerator(self.site)
         self.rollbackRegex = re.compile(r"Änderungen von \[\[(?:Special:Contributions|Spezial:Beiträge)/([^|]+)\|.+")
         self.undoRegex = re.compile(r"Änderung [0-9]+ von \[\[Special:Contribs/([^|]+)\|.+")
+        self.vmUserTemplateRegex = re.compile(r"{{Benutzer\|([^}]+)}}")
         self.vpnCheck = VpnCheck()
+        self.vmPage = pywikibot.Page(self.site, "Wikipedia:Vandalismusmeldung", 4)
+        self.lastBlockEventsCheckTime = datetime.utcnow()
 
     def setup(self) -> None:
         """Setup the bot."""
@@ -57,6 +61,53 @@ class Controller(SingleSiteBot):
             return True
         return super().skip_page(page)
 
+    def treatVmPageChange(self, oldRevision, newRevision) -> None:
+        oldText = self.vmPage.getOldVersion(oldRevision)
+        newText = self.vmPage.getOldVersion(newRevision)
+        oldVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, oldText))
+        newVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, newText))
+        newReportedUsers = newVersionTemplateInstances.difference(oldVersionTemplateInstances)
+        for username in newReportedUsers:
+            username = username.strip()
+            pwUser = pywikibot.User(self.site, username)
+            if pwUser.isAnonymous():
+                checkRes = self.vpnCheck.checkWithIpCheck(username)
+                vpnOrProxy = checkRes.score >= 2
+                staticIp = not self.isDynamicIp(username)
+                removeOneBlock = pwUser.isBlocked(force=True)
+                blockCount = self.getBlockCount(pwUser)
+                if removeOneBlock:
+                    blockCount -= 1
+                print(f"Added IP: {username} Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}")
+
+    def getBlockCount(self, pwUser: pywikibot.User) -> int:
+        events = self.site.logevents(page=f"User:{pwUser.username}", logtype="block")
+        blockCount = 0
+        for ev in events:
+            if ev.type() == "block" and ev.action() == "block":
+                blockCount += 1
+        return blockCount
+
+    def isIpV6(self, ip: str) -> bool:
+        return ip.find(":") != -1
+
+    def isDynamicIp(self, ip: str) -> bool:
+        if self.isIpV6(ip):
+            # IPv6 are almost never dynamic
+            return False
+        elements = ip.split(".")
+        elements.reverse()
+        checkIp = f"{'.'.join(elements)}.dul.dnsbl.sorbs.net"
+        try:
+            _ = gethostbyname(checkIp)
+            return True
+        except gaierror as ex:
+            if ex.errno == -errno.ENOENT or ex.errno == 11001:  # 11001 == WSAHOST_NOT_FOUND
+                return False
+            else:
+                print(ex)
+                raise
+
     def treat(self, page: pywikibot.Page) -> None:
         """Process a single Page object from stream."""
         ch = page._rcinfo
@@ -71,6 +122,10 @@ class Controller(SingleSiteBot):
             signal.alarm(TIMEOUT)  # pylint: disable=E1101
 
         if ch["type"] == "edit":
+            # print(f"Edit on {ch['title']}: {ch['revision']['new']} by {ch['user']}")
+            if ch["namespace"] == 4 and ch["title"] == "Wikipedia:Vandalismusmeldung" and not ch["bot"]:
+                self.treatVmPageChange(ch["revision"]["old"], ch["revision"]["new"])
+
             comment = ch["comment"]
             rollbackedUser = None
             searchRes1 = self.rollbackRegex.search(comment)
@@ -83,7 +138,6 @@ class Controller(SingleSiteBot):
                 pyUser = pywikibot.User(self.site, rollbackedUser)
                 if pyUser.isAnonymous():
                     ip = rollbackedUser
-                    pywikibot.output(f"IP reverted: {ip}")
                     try:
                         checkRes = self.vpnCheck.checkWithTeoh(ip)
                         if checkRes.score >= 2:
@@ -92,13 +146,28 @@ class Controller(SingleSiteBot):
                         print(f"{ip} could not be checked: {ex}")
                     else:
                         if checkRes.score >= 2:
-                            print(f"Likely VPN or proxy: {ip}, score: {checkRes.score}")
+                            print(f"IP found after rollback: {ip} is a PROXY")
+
+        currentTime = datetime.utcnow()
+        if currentTime - self.lastBlockEventsCheckTime >= timedelta(seconds=30):
+            events = self.site.logevents(reverse=True, start=self.lastBlockEventsCheckTime, logtype="block")
+            for event in events:
+                if event.action() == "block":
+                    pwUser = pywikibot.User(self.site, event.page().title())
+                    if pwUser.isAnonymous() and event.expiry() < currentTime + timedelta(weeks=1):
+                        checkRes = self.vpnCheck.checkWithIpCheck(pwUser.username)
+                        if checkRes.score >= 2:
+                            print(f"Blocked IP {pwUser.username} is a PROXY.")
+            self.lastBlockEventsCheckTime = currentTime
 
     def teardown(self) -> None:
         """Bot has finished due to unknown reason."""
         if self._generator_completed:
             pywikibot.log("Main thread exit - THIS SHOULD NOT HAPPEN")
             time.sleep(10)
+
+    def test(self):
+        self.treatVmPageChange(199995606, 199999485)
 
 
 def FaultTolerantLiveRCPageGenerator(site: pywikibot.site.BaseSite) -> Iterator[pywikibot.Page]:
@@ -119,6 +188,7 @@ def main() -> None:
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
     pywikibot.handle_args()
     Controller().run()
+    # Controller().test()
 
 
 if __name__ == "__main__":
