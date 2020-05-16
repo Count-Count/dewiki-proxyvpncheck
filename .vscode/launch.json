@@ -27,7 +27,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/sentinel.py",
-            "console": "integratedTerminal",
+            "console": "internalConsole",
             "args": [
                 "-simulate",
                 "--run-bot",
