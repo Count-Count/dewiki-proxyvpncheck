@@ -14,7 +14,7 @@ from typing import Any, Set
 import pytz
 
 import pywikibot
-from vpncheck import CheckException, VpnCheck
+from vpncheck import VpnCheck, CheckException, QuotaExceededException
 
 
 class Program:
@@ -103,6 +103,9 @@ class Program:
                     uncached += 1
                 if checkRes.score >= 2:
                     checkRes = self.vpnCheck.checkWithIpCheck(ip)
+            except QuotaExceededException as ex:
+                print(f"Quota exceeded, aborting.")
+                break
             except CheckException as ex:
                 print(f"{ip} could not be checked: {ex}")
             else:

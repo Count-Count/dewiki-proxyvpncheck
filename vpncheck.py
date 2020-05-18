@@ -25,6 +25,10 @@ class CheckException(Exception):
     pass
 
 
+class QuotaExceededException(CheckException):
+    pass
+
+
 class VpnCheck:
     def __init__(self) -> None:
         self.apikey = os.getenv("IPCHECK_API_KEY")
@@ -49,9 +53,19 @@ class VpnCheck:
                     response = requests.get(f"https://ip.teoh.io/api/vpn/{ip}")
                     if response.status_code == 200:
                         jsonResponse = json.loads(response.text)
+                        if not "vpn_or_proxy" in jsonResponse:
+                            if "message" in jsonResponse:
+                                if jsonResponse["message"].find("Exceeded limit"):
+                                    raise QuotaExceededException("Teoh check failed: Quota exceeded")
+                                else:
+                                    raise CheckException(f"Teoh check failed: {jsonResponse['message']}")
+                            else:
+                                raise CheckException(f"Teoh check failed: Unknown error")
                         with self.teohCacheEnv.begin(buffers=True, write=True) as txn:
                             txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
                         break
+                except CheckException:
+                    raise
                 except Exception as ex:
                     lastError = str(ex)
                 # delay in case of error

@@ -78,7 +78,7 @@ class Controller(SingleSiteBot):
                 blockCount = self.getBlockCount(pwUser)
                 if removeOneBlock:
                     blockCount -= 1
-                print(f"Added IP: {username} Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}")
+                print(f"VM - Added IP: {username} Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}")
 
     def getBlockCount(self, pwUser: pywikibot.User) -> int:
         events = self.site.logevents(page=f"User:{pwUser.username}", logtype="block")
