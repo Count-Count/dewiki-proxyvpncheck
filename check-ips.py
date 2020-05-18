@@ -95,10 +95,10 @@ class Program:
                             shortlyBlockedIps.add(pyUser.username)
 
         uncached = 0
-        print(f"Checking {len(ipToRevertCount.keys())} addresses with teoh...")
+        print(f"Checking {len(ipToRevertCount.keys())} addresses with IPHub...")
         for ip in ipToRevertCount:
             try:
-                checkRes = self.vpnCheck.checkWithTeoh(ip)
+                checkRes = self.vpnCheck.checkWithIphub(ip)
                 if not checkRes.cached:
                     uncached += 1
                 if checkRes.score >= 2:
@@ -138,6 +138,7 @@ class Program:
 def main() -> None:
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
     pywikibot.handle_args()
+    # res = VpnCheck().checkWithIphub("81.92.17.129")
     Program().listIPs()
 
 

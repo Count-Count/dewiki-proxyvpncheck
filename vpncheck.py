@@ -31,9 +31,13 @@ class QuotaExceededException(CheckException):
 
 class VpnCheck:
     def __init__(self) -> None:
-        self.apikey = os.getenv("IPCHECK_API_KEY")
+        self.ipcheckApikey = os.getenv("IPCHECK_API_KEY")
+        self.iphubApikey = os.getenv("IPHUB_API_KEY")
         self.teohCacheEnv = lmdb.open(
-            "teohCache", map_size=int(1e8), metasync=False, sync=False, lock=False, writemap=False, meminit=False
+            "cache/teoh", map_size=int(1e8), metasync=False, sync=False, lock=False, writemap=False, meminit=False
+        )
+        self.iphubCacheEnv = lmdb.open(
+            "cache/iphub", map_size=int(1e8), metasync=False, sync=False, lock=False, writemap=False, meminit=False
         )
 
     def checkWithTeoh(self, ip: str) -> CheckResult:
@@ -64,6 +68,8 @@ class VpnCheck:
                         with self.teohCacheEnv.begin(buffers=True, write=True) as txn:
                             txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
                         break
+                    else:
+                        response.raise_for_status()
                 except CheckException:
                     raise
                 except Exception as ex:
@@ -75,11 +81,46 @@ class VpnCheck:
         score = 2 if jsonResponse["vpn_or_proxy"] != "no" else 0
         return CheckResult(score=score, cached=cached)
 
+    def checkWithIphub(self, ip: str) -> CheckResult:
+        jsonResponse = None
+        cached = False
+        with self.iphubCacheEnv.begin(buffers=True) as txn:
+            getRes = txn.get(ip.encode("utf-8"), None)
+            if getRes:
+                cached = True
+                jsonResponse = json.loads(str(getRes, "utf-8"))
+        lastError = None
+        if not jsonResponse:
+            for _ in range(5):
+                try:
+                    response = requests.get(f"http://v2.api.iphub.info/ip/{ip}", headers={"X-Key": self.iphubApikey},)
+                    if response.status_code == 200:
+                        jsonResponse = json.loads(response.text)
+                        if not "block" in jsonResponse:
+                            raise CheckException(f"Iphub check failed: Unknown error")
+                        with self.iphubCacheEnv.begin(buffers=True, write=True) as txn:
+                            txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
+                        break
+                    else:
+                        response.raise_for_status()
+                except CheckException:
+                    raise
+                except Exception as ex:
+                    lastError = str(ex)
+                # delay in case of error
+                time.sleep(1)
+            else:
+                raise CheckException(lastError)
+        score = 2 if jsonResponse["block"] == 1 else 0
+        return CheckResult(score=score, cached=cached)
+
     def checkWithIpCheck(self, ip: str) -> CheckResult:
         lastError = None
         for _ in range(5):
             try:
-                response = requests.get(f"https://ipcheck.toolforge.org/index.php?ip={ip}&api=true&key={self.apikey}")
+                response = requests.get(
+                    f"https://ipcheck.toolforge.org/index.php?ip={ip}&api=true&key={self.ipcheckApikey}"
+                )
                 if response.status_code == 200:
                     blockScore = 0
                     errors = 0

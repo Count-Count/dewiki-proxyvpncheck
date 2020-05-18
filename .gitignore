@@ -10,4 +10,4 @@ replica.my.cnf
 /throttle.ctrl
 /apicache-py3/
 /logs/
-/teohCache/
+/cache/
