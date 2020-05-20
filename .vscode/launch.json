@@ -33,5 +33,15 @@
                 "--run-bot",
             ]
         },
+        {
+            "name": "sentinel PROD",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/sentinel.py",
+            "console": "internalConsole",
+            "args": [
+                "--run-bot",
+            ]
+        },
     ]
 }

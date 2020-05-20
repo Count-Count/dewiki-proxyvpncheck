@@ -4,22 +4,21 @@
 #
 # Distributed under the terms of the MIT license.
 
-from typing import Any, Iterator, Callable, Pattern, Dict
-from datetime import datetime
-from datetime import timedelta
+import errno
+import locale
 import os
 import re
-import time
 import signal
-import locale
+import time
 import traceback
+from datetime import datetime, timedelta
+from socket import gaierror, gethostbyname
+from typing import Any, Iterator
+
 import pywikibot
 from pywikibot.bot import SingleSiteBot
-from pywikibot.diff import PatchManager
 from pywikibot.comms.eventstreams import site_rc_listener
 from vpncheck import CheckException, VpnCheck
-from socket import gaierror, gethostbyname
-import errno
 
 TIMEOUT = 600  # We expect at least one rc entry every 10 minutes
 
@@ -62,8 +61,16 @@ class Controller(SingleSiteBot):
         return super().skip_page(page)
 
     def treatVmPageChange(self, oldRevision, newRevision) -> None:
-        oldText = self.vmPage.getOldVersion(oldRevision)
-        newText = self.vmPage.getOldVersion(newRevision)
+        for i in range(3):
+            oldText = self.vmPage.getOldVersion(oldRevision)
+            if oldText:
+                break
+            time.sleep(1)
+        for i in range(3):
+            newText = self.vmPage.getOldVersion(newRevision)
+            if newText:
+                break
+            time.sleep(1)
         oldVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, oldText))
         newVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, newText))
         newReportedUsers = newVersionTemplateInstances.difference(oldVersionTemplateInstances)
@@ -78,7 +85,10 @@ class Controller(SingleSiteBot):
                 blockCount = self.getBlockCount(pwUser)
                 if removeOneBlock:
                     blockCount -= 1
-                print(f"VM - Added IP: {username} Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}")
+                if vpnOrProxy or (staticIp and blockCount > 0):
+                    self.addLogEntry(
+                        f"VM - Added IP: [[Spezial:Beiträge/{username}|{username}]] Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}"
+                    )
 
     def getBlockCount(self, pwUser: pywikibot.User) -> int:
         events = self.site.logevents(page=f"User:{pwUser.username}", logtype="block")
@@ -107,6 +117,12 @@ class Controller(SingleSiteBot):
             else:
                 print(ex)
                 raise
+
+    def addLogEntry(self, e: str) -> None:
+        print(e)
+        logPage = pywikibot.Page(self.site, "Benutzer:Count Count/iplog")
+        logPage.text += f"\n* {e}"
+        logPage.save(summary="Update")
 
     def treat(self, page: pywikibot.Page) -> None:
         """Process a single Page object from stream."""
@@ -139,14 +155,14 @@ class Controller(SingleSiteBot):
                 if pyUser.isAnonymous():
                     ip = rollbackedUser
                     try:
-                        checkRes = self.vpnCheck.checkWithTeoh(ip)
+                        checkRes = self.vpnCheck.checkWithIphub(ip)
                         if checkRes.score >= 2:
                             checkRes = self.vpnCheck.checkWithIpCheck(ip)
                     except CheckException as ex:
-                        print(f"{ip} could not be checked: {ex}")
+                        self.addLogEntry(f"{ip} could not be checked: {ex}")
                     else:
                         if checkRes.score >= 2:
-                            print(f"IP found after rollback: {ip} is a PROXY")
+                            self.addLogEntry(f"IP found after rollback: [[Spezial:Beiträge/{ip}|{ip}]] is a PROXY")
 
         currentTime = datetime.utcnow()
         if currentTime - self.lastBlockEventsCheckTime >= timedelta(seconds=30):
@@ -157,7 +173,9 @@ class Controller(SingleSiteBot):
                     if pwUser.isAnonymous() and event.expiry() < currentTime + timedelta(weeks=1):
                         checkRes = self.vpnCheck.checkWithIpCheck(pwUser.username)
                         if checkRes.score >= 2:
-                            print(f"Blocked IP {pwUser.username} is a PROXY.")
+                            self.addLogEntry(
+                                f"Blocked IP [[Spezial:Beiträge/{pwUser.username}|{pwUser.username}]] is a PROXY."
+                            )
             self.lastBlockEventsCheckTime = currentTime
 
     def teardown(self) -> None:
