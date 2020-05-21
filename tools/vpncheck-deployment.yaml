@@ -1,0 +1,21 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: vpncheck
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: vpncheck
+        toolforge: tool
+    spec:
+      containers:
+        - name: vpncheck
+          image: docker-registry.tools.wmflabs.org/toollabs-python37-sssd-base:latest
+          workingDir: /data/project/dewikivpncheck
+          command: [ "/data/project/dewikivpncheck/exec-bot.sh" ]
+          env:
+            - name: HOME
+              value: /data/project/dewikivpncheck
+          imagePullPolicy: Always

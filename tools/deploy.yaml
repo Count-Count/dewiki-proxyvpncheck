@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: pip-update-
+spec:
+  template:
+    metadata:
+      labels:
+        toolforge: tool
+    spec:
+      containers:
+      - name: pipenv
+        image: docker-registry.tools.wmflabs.org/toollabs-python37-sssd-base:latest
+        command: ["/data/project/dewikivpncheck/venv/bin/pip", "install", "-r", "/data/project/dewikivpncheck/requirements.txt"]
+      restartPolicy: Never
+  backoffLimit: 0
