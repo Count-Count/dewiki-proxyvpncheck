@@ -15,6 +15,7 @@ rope = "*"
 pytz = "*"
 pywikibot = "*"
 lmdb = "*"
+six = "*"
 
 [requires]
 python_version = "3.7"
