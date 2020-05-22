@@ -64,7 +64,7 @@ class VpnCheck:
                                 else:
                                     raise CheckException(f"Teoh check failed: {jsonResponse['message']}")
                             else:
-                                raise CheckException(f"Teoh check failed: Unknown error")
+                                raise CheckException("Teoh check failed: Unknown error")
                         with self.teohCacheEnv.begin(buffers=True, write=True) as txn:
                             txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
                         break
@@ -97,7 +97,7 @@ class VpnCheck:
                     if response.status_code == 200:
                         jsonResponse = json.loads(response.text)
                         if not "block" in jsonResponse:
-                            raise CheckException(f"Iphub check failed: Unknown error")
+                            raise CheckException("Iphub check failed: Unknown error")
                         with self.iphubCacheEnv.begin(buffers=True, write=True) as txn:
                             txn.put(ip.encode("utf-8"), response.text.encode("utf-8"))
                         break
