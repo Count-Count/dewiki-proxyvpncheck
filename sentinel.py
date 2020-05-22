@@ -13,7 +13,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from socket import gaierror, gethostbyname
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 import pywikibot
 from pywikibot.bot import SingleSiteBot
@@ -33,7 +33,7 @@ def on_timeout(signum: Any, frame: Any) -> None:
 
 class Controller(SingleSiteBot):
     def __init__(self) -> None:
-        site = pywikibot.Site()
+        site = cast(pywikibot.site.APISite, pywikibot.Site())
         site.login()
         super(Controller, self).__init__(site=site)
         self.generator = FaultTolerantLiveRCPageGenerator(self.site)
