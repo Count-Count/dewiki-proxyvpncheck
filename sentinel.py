@@ -130,7 +130,7 @@ class Controller(SingleSiteBot):
 
         ts = datetime.fromtimestamp(ch["timestamp"])
 
-        if datetime.now() - ts > timedelta(minutes=5):
+        if datetime.now() - ts > timedelta(minutes=30):
             pywikibot.warning("Change too old: %s" % (str(datetime.now() - ts)))
             return
 
