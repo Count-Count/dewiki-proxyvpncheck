@@ -60,13 +60,13 @@ class Controller(SingleSiteBot):
             return True
         return super().skip_page(page)
 
-    def treatVmPageChange(self, oldRevision, newRevision) -> None:
-        for i in range(3):
+    def treatVmPageChange(self, oldRevision: int, newRevision: int) -> None:
+        for _ in range(3):
             oldText = self.vmPage.getOldVersion(oldRevision)
             if oldText:
                 break
             time.sleep(1)
-        for i in range(3):
+        for _ in range(3):
             newText = self.vmPage.getOldVersion(newRevision)
             if newText:
                 break
@@ -184,7 +184,7 @@ class Controller(SingleSiteBot):
             pywikibot.log("Main thread exit - THIS SHOULD NOT HAPPEN")
             time.sleep(10)
 
-    def test(self):
+    def test(self) -> None:
         self.treatVmPageChange(199995606, 199999485)
 
 
