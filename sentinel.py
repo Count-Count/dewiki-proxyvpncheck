@@ -122,7 +122,7 @@ class Controller(SingleSiteBot):
         print(e)
         logPage = pywikibot.Page(self.site, "Benutzer:Count Count/iplog")
         logPage.text += f"\n* {e}"
-        logPage.save(summary="Update")
+        logPage.save(summary="Bot: Update")
 
     def treat(self, page: pywikibot.Page) -> None:
         """Process a single Page object from stream."""
