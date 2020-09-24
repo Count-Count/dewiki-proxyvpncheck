@@ -1,11 +1,13 @@
 #!/bin/bash
 set -euxo pipefail
 
+BASTION=login.toolforge.org
+
 (cd ../; pipenv lock --requirements > /tmp/requirements.txt)
 
-pscp /tmp/requirements.txt ../{sentinel.py,vpncheck.py,sseclient.py} deploy.sh exec-bot.sh *.yaml countcount@login.tools.wmflabs.org:/data/project/dewikivpncheck/
-pscp ../user-config.py countcount@login.tools.wmflabs.org:/data/project/dewikivpncheck/user-config.py.orig
-plink countcount@login.tools.wmflabs.org "chmod 755 /data/project/dewikivpncheck/exec-bot.sh"
-plink countcount@login.tools.wmflabs.org "chmod 755 /data/project/dewikivpncheck/deploy.sh"
-plink countcount@login.tools.wmflabs.org "become dewikivpncheck cp /data/project/dewikivpncheck/user-config.py.orig /data/project/dewikivpncheck/user-config.py"
-plink countcount@login.tools.wmflabs.org "become dewikivpncheck /data/project/dewikivpncheck/deploy.sh"
+scp /tmp/requirements.txt ../{sentinel.py,vpncheck.py,sseclient.py} deploy.sh vpncheck-deployment.yaml exec-bot.sh countcount@$BASTION:/data/project/dewikivpncheck/
+scp ../user-config.py countcount@$BASTION:/data/project/dewikivpncheck/user-config.py.orig
+ssh countcount@$BASTION "chmod 755 /data/project/dewikivpncheck/exec-bot.sh"
+ssh countcount@$BASTION "chmod 755 /data/project/dewikivpncheck/deploy.sh"
+ssh countcount@$BASTION "become dewikivpncheck cp /data/project/dewikivpncheck/user-config.py.orig /data/project/dewikivpncheck/user-config.py"
+ssh countcount@$BASTION "become dewikivpncheck /data/project/dewikivpncheck/deploy.sh"
