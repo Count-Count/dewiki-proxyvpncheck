@@ -11,9 +11,10 @@ import re
 import signal
 import time
 import traceback
+import ipaddress
 from datetime import datetime, timedelta
 from socket import gaierror, gethostbyname
-from typing import Any, Iterator, cast
+from typing import Any, Iterator, cast, List
 
 import pywikibot
 from pywikibot.bot import SingleSiteBot
@@ -82,21 +83,42 @@ class Controller(SingleSiteBot):
                 vpnOrProxy = checkRes.score >= 2
                 staticIp = not self.isDynamicIp(username)
                 removeOneBlock = pwUser.isBlocked(force=True)
-                blockCount = self.getBlockCount(pwUser)
+                blockCount = self.getBlockCount(username)
                 if removeOneBlock:
                     blockCount -= 1
-                if vpnOrProxy or (staticIp and blockCount > 0):
+                if vpnOrProxy:
+                    self.addLogEntry(f"VM - IP is VM: {{{{Benutzer|{username}}}}}")
+                if staticIp and blockCount > 0:
+                    self.addLogEntry(f"VM - IP was blocked before: {{{{Benutzer|{username}}}}}")
+                rangeBlocks = self.getRangeBlockLogEntries(username)
+                for rangeBlock in rangeBlocks:
                     self.addLogEntry(
-                        f"VM - Added IP: [[Spezial:Beiträge/{username}|{username}]] Static: {staticIp} VPN: {vpnOrProxy} Previous blocks: {blockCount}"
+                        f"VM - IP [[Benutzer:{username}|{username}]]was in blocked range before: {{{{Benutzer|{rangeBlock}}}}}"
                     )
 
-    def getBlockCount(self, pwUser: pywikibot.User) -> int:
-        events = self.site.logevents(page=f"User:{pwUser.username}", logtype="block")
+    def getBlockCount(self, username: str) -> int:
+        events = self.site.logevents(page=f"User:{username}", logtype="block")
         blockCount = 0
         for ev in events:
             if ev.type() == "block" and ev.action() == "block":
                 blockCount += 1
         return blockCount
+
+    def getRangeBlockLogEntries(self, username: str) -> List[str]:
+        addr = ipaddress.ip_address(username)
+        res = []
+        if isinstance(addr, ipaddress.IPv4Address):
+            network = ipaddress.ip_network(username).supernet(new_prefix=31)
+            networksToCheck = 16
+        else:
+            network = ipaddress.ip_network(username).supernet(new_prefix=64)
+            networksToCheck = 46
+        for _ in range(0, networksToCheck):
+            events = list(self.site.logevents(page=f"User:{str(network)}", logtype="block"))
+            if events:
+                res.append(str(network))
+            network = network.supernet()
+        return res
 
     def isIpV6(self, ip: str) -> bool:
         return ip.find(":") != -1
@@ -185,7 +207,9 @@ class Controller(SingleSiteBot):
             time.sleep(10)
 
     def test(self) -> None:
-        self.treatVmPageChange(199995606, 199999485)
+        self.treatVmPageChange(203919495, 203920816)
+        # self.getRangeBlockLogEntries("178.199.16.217")
+        # self.getRangeBlockLogEntries("2a02:8108:7c0:780c:e03a:fc22:3449:e1bf")
 
 
 def FaultTolerantLiveRCPageGenerator(site: pywikibot.site.BaseSite) -> Iterator[pywikibot.Page]:
