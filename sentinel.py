@@ -87,7 +87,7 @@ class Controller(SingleSiteBot):
                 if removeOneBlock:
                     blockCount -= 1
                 if vpnOrProxy:
-                    self.addLogEntry(f"VM - IP is VM: {{{{Benutzer|{username}}}}}")
+                    self.addLogEntry(f"VM - IP is VPN or proxy: {{{{Benutzer|{username}}}}}")
                 if staticIp and blockCount > 0:
                     self.addLogEntry(f"VM - IP was blocked before: {{{{Benutzer|{username}}}}}")
                 rangeBlocks = self.getRangeBlockLogEntries(username)
