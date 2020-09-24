@@ -93,7 +93,7 @@ class Controller(SingleSiteBot):
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
                     self.addLogEntry(
-                        f"VM - IP [[Benutzer:{username}|{username}]]was in blocked range before: {{{{Benutzer|{rangeBlock}}}}}"
+                        f"VM - IP [[Benutzer:{username}|{username}]] was in blocked range before: {{{{Benutzer|{rangeBlock}}}}}"
                     )
 
     def getBlockCount(self, username: str) -> int:
