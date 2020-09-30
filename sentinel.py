@@ -62,16 +62,22 @@ class Controller(SingleSiteBot):
         return super().skip_page(page)
 
     def treatVmPageChange(self, oldRevision: int, newRevision: int) -> None:
-        for _ in range(3):
+        for _ in range(10):
             oldText = self.vmPage.getOldVersion(oldRevision)
             if oldText:
                 break
             time.sleep(1)
-        for _ in range(3):
+        else:
+            pywikibot.log(f"Could not find old VM version {oldRevision}")
+            return
+        for _ in range(10):
             newText = self.vmPage.getOldVersion(newRevision)
             if newText:
                 break
             time.sleep(1)
+        else:
+            pywikibot.log(f"Could not find new VM version {newRevision}")
+            return
         oldVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, oldText))
         newVersionTemplateInstances = set(re.findall(self.vmUserTemplateRegex, newText))
         newReportedUsers = newVersionTemplateInstances.difference(oldVersionTemplateInstances)
