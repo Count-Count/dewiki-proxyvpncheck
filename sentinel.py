@@ -84,6 +84,7 @@ class Controller(SingleSiteBot):
         for username in newReportedUsers:
             username = username.strip()
             pwUser = pywikibot.User(self.site, username)
+            text = ""
             if pwUser.isAnonymous():
                 checkRes = self.vpnCheck.checkWithIpCheck(username)
                 vpnOrProxy = checkRes.score >= 2
@@ -93,14 +94,15 @@ class Controller(SingleSiteBot):
                 if removeOneBlock:
                     blockCount -= 1
                 if vpnOrProxy:
-                    self.addLogEntry(f"VM - IP is VPN or proxy: {{{{Benutzer|{username}}}}}")
+                    text += "Diese IP-Adresse gehört zu einem VPN oder Proxy. "
                 if staticIp and blockCount > 0:
-                    self.addLogEntry(f"VM - IP was blocked before: {{{{Benutzer|{username}}}}}")
+                    text += "Diese IP-Adresse hat Vorsperren. "
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
-                    self.addLogEntry(
-                        f"VM - IP [[Benutzer:{username}|{username}]] was in blocked range before: {{{{Benutzer|{rangeBlock}}}}}"
-                    )
+                    text += f"Diese IP wurde bereits zuvor als Teil der Range [[Spezial:Beiträge/{rangeBlock}|{rangeBlock}]] ([[Spezial:Logbuch/block&page=Benutzer:{rangeBlock}|Sperrlog]]) gespert. "
+            if text:
+                text = "🤖 " + text + " --~~~~"
+                self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]: {text}")
 
     def getBlockCount(self, username: str) -> int:
         events = self.site.logevents(page=f"User:{username}", logtype="block")
