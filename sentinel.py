@@ -14,7 +14,7 @@ import traceback
 import ipaddress
 from datetime import datetime, timedelta
 from socket import gaierror, gethostbyname
-from typing import Any, Iterator, cast, List
+from typing import Any, Iterator, cast, List, Tuple
 
 import pywikibot
 from pywikibot.bot import SingleSiteBot
@@ -85,28 +85,39 @@ class Controller(SingleSiteBot):
         for username in newReportedUsers:
             username = username.strip()
             pwUser = pywikibot.User(self.site, username)
-            text = ""
+            warnings = ""
             if pwUser.isAnonymous():
                 checkRes = self.vpnCheck.checkWithIpCheck(username)
                 vpnOrProxy = checkRes.score >= 2
                 staticIp = not self.isDynamicIp(username)
                 removeOneBlock = pwUser.isBlocked(force=True)
                 blockCount = self.getBlockCount(username)
+                warnings = []
                 if removeOneBlock:
                     blockCount -= 1
                 if vpnOrProxy:
-                    text += "Diese statische IP-Adresse gehört zu einem VPN oder Proxy. "
+                    warnings.append("Diese statische IP-Adresse gehört zu einem VPN oder Proxy.")
                 if staticIp and blockCount > 0:
                     if self.isIpV6(username):
-                        text += "Diese IP-Adresse hat Vorsperren. "
+                        warnings.append("Diese IP-Adresse hat Vorsperren.")
                     else:
-                        text += "Diese statische IP-Adresse hat Vorsperren. "
+                        warnings.append("Diese statische IP-Adresse hat Vorsperren.")
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
-                    text += f"Diese IP wurde bereits zuvor als Teil der Range [[Spezial:Beiträge/{rangeBlock}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock} Sperrlog]) gesperrt. "
-                if text:
-                    text = "🤖 " + text + " --~~~~"
-                    self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]\n:{text}")
+                    if rangeBlock[1] == datetime.now().year:
+                        warnings.append(
+                            f"Diese IP-Adresse wurde dieses Jahr schon als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
+                        )
+                    else:
+                        warnings.append(
+                            f"Diese IP-Adresse wurde {rangeBlock[1]} als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
+                        )
+                if warnings:
+                    warningText = ""
+                    for i in range(0, len(warnings) - 1):
+                        warningText += f":🤖 {warnings[i]}\n"
+                    warningText += f":🤖 {warnings[-1]} --~~~~\n"
+                    self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]\n{warningText}")
 
     def getBlockCount(self, username: str) -> int:
         events = self.site.logevents(page=f"User:{username}", logtype="block")
@@ -116,7 +127,7 @@ class Controller(SingleSiteBot):
                 blockCount += 1
         return blockCount
 
-    def getRangeBlockLogEntries(self, username: str) -> List[str]:
+    def getRangeBlockLogEntries(self, username: str) -> List[Tuple[str, int]]:
         addr = ipaddress.ip_address(username)
         res = []
         if isinstance(addr, ipaddress.IPv4Address):
@@ -128,7 +139,7 @@ class Controller(SingleSiteBot):
         for _ in range(0, networksToCheck):
             events = list(self.site.logevents(page=f"User:{str(network)}", logtype="block"))
             if events and not str(network) in self.ignoredRangeBlocks:
-                res.append(str(network))
+                res.append((str(network), events[0].timestamp().year))
             network = network.supernet()
         return res
 
@@ -240,9 +251,9 @@ def FaultTolerantLiveRCPageGenerator(site: pywikibot.site.BaseSite) -> Iterator[
 
 def main() -> None:
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
-    pywikibot.handle_args()
+    # pywikibot.handle_args()
     Controller().run()
-    # Controller().test()
+    Controller().test()
 
 
 if __name__ == "__main__":
