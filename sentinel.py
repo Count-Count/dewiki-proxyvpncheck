@@ -253,7 +253,7 @@ def main() -> None:
     locale.setlocale(locale.LC_ALL, "de_DE.utf8")
     # pywikibot.handle_args()
     Controller().run()
-    Controller().test()
+    # Controller().test()
 
 
 if __name__ == "__main__":
