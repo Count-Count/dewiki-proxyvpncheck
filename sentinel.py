@@ -44,6 +44,7 @@ class Controller(SingleSiteBot):
         self.vpnCheck = VpnCheck()
         self.vmPage = pywikibot.Page(self.site, "Wikipedia:Vandalismusmeldung", 4)
         self.lastBlockEventsCheckTime = datetime.utcnow()
+        self.ignoredRangeBlocks = set(["2003::/19"])
 
     def setup(self) -> None:
         """Setup the bot."""
@@ -94,15 +95,18 @@ class Controller(SingleSiteBot):
                 if removeOneBlock:
                     blockCount -= 1
                 if vpnOrProxy:
-                    text += "Diese IP-Adresse gehört zu einem VPN oder Proxy. "
+                    text += "Diese statische IP-Adresse gehört zu einem VPN oder Proxy. "
                 if staticIp and blockCount > 0:
-                    text += "Diese IP-Adresse hat Vorsperren. "
+                    if self.isIpV6(username):
+                        text += "Diese IP-Adresse hat Vorsperren. "
+                    else:
+                        text += "Diese statische IP-Adresse hat Vorsperren. "
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
-                    text += f"Diese IP wurde bereits zuvor als Teil der Range [[Spezial:Beiträge/{rangeBlock}|{rangeBlock}]] ([[Spezial:Logbuch/block&page=Benutzer:{rangeBlock}|Sperrlog]]) gespert. "
-            if text:
-                text = "🤖 " + text + " --~~~~"
-                self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]: {text}")
+                    text += f"Diese IP wurde bereits zuvor als Teil der Range [[Spezial:Beiträge/{rangeBlock}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock} Sperrlog]) gesperrt. "
+                if text:
+                    text = "🤖 " + text + " --~~~~"
+                    self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]\n:{text}")
 
     def getBlockCount(self, username: str) -> int:
         events = self.site.logevents(page=f"User:{username}", logtype="block")
@@ -123,7 +127,7 @@ class Controller(SingleSiteBot):
             networksToCheck = 46
         for _ in range(0, networksToCheck):
             events = list(self.site.logevents(page=f"User:{str(network)}", logtype="block"))
-            if events:
+            if events and not str(network) in self.ignoredRangeBlocks:
                 res.append(str(network))
             network = network.supernet()
         return res
