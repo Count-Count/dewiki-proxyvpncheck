@@ -14,7 +14,7 @@ import traceback
 import ipaddress
 from datetime import datetime, timedelta
 from socket import gaierror, gethostbyname
-from typing import Any, Iterator, cast, List, Tuple
+from typing import Any, Iterator, cast, List, Tuple, Optional
 
 import pywikibot
 from pywikibot.bot import SingleSiteBot
@@ -90,27 +90,29 @@ class Controller(SingleSiteBot):
                 checkRes = self.vpnCheck.checkWithIpCheck(username)
                 vpnOrProxy = checkRes.score >= 2
                 staticIp = not self.isDynamicIp(username)
-                removeOneBlock = pwUser.isBlocked(force=True)
-                blockCount = self.getBlockCount(username)
+                currentlyBlocked = pwUser.isBlocked(force=True)
+                lastBlockTimestamp = self.getLastBlockTImestamp(username, currentlyBlocked)
                 warnings = []
-                if removeOneBlock:
-                    blockCount -= 1
                 if vpnOrProxy:
                     warnings.append("Diese statische IP-Adresse gehört zu einem VPN oder Proxy.")
-                if staticIp and blockCount > 0:
+                if staticIp and lastBlockTimestamp:
                     if self.isIpV6(username):
-                        warnings.append("Diese IP-Adresse hat Vorsperren.")
+                        warnings.append(
+                            f"Diese IP-Adresse hat Vorsperren. Zuletzt wurde eine am {self.getDateString(lastBlockTimestamp)} verhängt."
+                        )
                     else:
-                        warnings.append("Diese statische IP-Adresse hat Vorsperren.")
+                        warnings.append(
+                            f"Diese statische IP-Adresse hat Vorsperren. Zuletzt wurde eine am {self.getDateString(lastBlockTimestamp)} verhängt."
+                        )
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
                     if rangeBlock[1] == datetime.now().year:
                         warnings.append(
-                            f"Diese IP-Adresse wurde dieses Jahr schon als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
+                            f"Diese IP-Adresse wurde dieses Jahr schon als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock[0]}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
                         )
                     else:
                         warnings.append(
-                            f"Diese IP-Adresse wurde {rangeBlock[1]} als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
+                            f"Diese IP-Adresse wurde {rangeBlock[1]} als Teil der Range [[Spezial:Beiträge/{rangeBlock[0]}|{rangeBlock[0]}]] ([//de.wikipedia.org/w/index.php?title=Spezial:Logbuch/block&page=Benutzer%3A{rangeBlock[0]} Sperrlog]) gesperrt."
                         )
                 if warnings:
                     warningText = ""
@@ -119,13 +121,20 @@ class Controller(SingleSiteBot):
                     warningText += f":🤖 {warnings[-1]} --~~~~\n"
                     self.addLogEntry(f"[[Spezial:Beiträge/{username}|{username}]]\n{warningText}")
 
-    def getBlockCount(self, username: str) -> int:
+    def getDateString(self, ts: datetime) -> str:
+        if os.name == "nt":
+            return ts.strftime("%e").replace(" ", "") + ts.strftime(". %B %Y")
+        else:
+            return ts.strftime("%-d. %B %Y")
+
+    def getLastBlockTImestamp(self, username: str, currentlyBlocked: bool) -> Optional[datetime]:
         events = self.site.logevents(page=f"User:{username}", logtype="block")
-        blockCount = 0
-        for ev in events:
-            if ev.type() == "block" and ev.action() == "block":
-                blockCount += 1
-        return blockCount
+        evs = [ev for ev in events if ev.action() == "block"]
+        if currentlyBlocked:
+            evs.pop(0)
+        if evs:
+            return evs[0].timestamp()
+        return None
 
     def getRangeBlockLogEntries(self, username: str) -> List[Tuple[str, int]]:
         addr = ipaddress.ip_address(username)
