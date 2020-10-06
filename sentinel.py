@@ -102,7 +102,7 @@ class Controller(SingleSiteBot):
                         )
                     else:
                         warnings.append(
-                            f"Diese statische IP-Adresse hat Vorsperren. Zuletzt sie am {self.getDateString(lastBlockTimestamp)} gesperrt."
+                            f"Diese statische IP-Adresse hat Vorsperren. Zuletzt wurde sie am {self.getDateString(lastBlockTimestamp)} gesperrt."
                         )
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
