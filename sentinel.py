@@ -98,11 +98,11 @@ class Controller(SingleSiteBot):
                 if staticIp and lastBlockTimestamp:
                     if self.isIpV6(username):
                         warnings.append(
-                            f"Diese IP-Adresse hat Vorsperren. Zuletzt wurde eine am {self.getDateString(lastBlockTimestamp)} verhängt."
+                            f"Diese IP-Adresse hat Vorsperren. Zuletzt wurde sie am {self.getDateString(lastBlockTimestamp)} gesperrt."
                         )
                     else:
                         warnings.append(
-                            f"Diese statische IP-Adresse hat Vorsperren. Zuletzt wurde eine am {self.getDateString(lastBlockTimestamp)} verhängt."
+                            f"Diese statische IP-Adresse hat Vorsperren. Zuletzt sie am {self.getDateString(lastBlockTimestamp)} gesperrt."
                         )
                 rangeBlocks = self.getRangeBlockLogEntries(username)
                 for rangeBlock in rangeBlocks:
